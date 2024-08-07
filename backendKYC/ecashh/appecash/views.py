@@ -8,7 +8,7 @@ import threading
 import cv2
 from django.http import HttpResponse, JsonResponse
 from rest_framework import generics, serializers
-
+from django.views.decorators.csrf import csrf_exempt
 from ecashh import settings
 from .models import Personne
 from .serializers import PersonneSerializer
@@ -122,6 +122,7 @@ def fetch_person_info(request):
 
 
 # Fonction pour correspondre le visage capturé avec l'image de référence
+@csrf_exempt
 def match_face_opencv(request):
     nni = request.GET.get('nni')
     if not nni:
@@ -149,38 +150,31 @@ def match_face_opencv(request):
         ref_descriptor = face_rec_model.compute_face_descriptor(ref_image, ref_shape)
         ref_descriptors.append(np.array(ref_descriptor))
 
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        return JsonResponse({'error': "Échec de l'ouverture de la caméra"}, status=500)
+    if request.method == 'POST':
+        file = request.FILES['image']
+        live_image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
 
-    # Capture plusieurs images pour robustesse
-    match_found = False
-    for _ in range(5):  # Capturer 5 images pour une meilleure robustesse
-        ret, live_frame = cap.read()
-        if not ret:
-            continue
+        if live_image is None:
+            return JsonResponse({'error': 'Failed to read live image'}, status=400)
 
-        live_faces = detector(live_frame, 1)
+        live_faces = detector(live_image, 1)
         if len(live_faces) == 0:
-            continue
+            cv2.imwrite(os.path.join(settings.MEDIA_ROOT, 'debug_live_image.png'), live_image)
+            return JsonResponse({'error': 'No face detected in live image'}, status=400)
 
+        match_found = False
         for live_face in live_faces:
-            live_shape = predictor(live_frame, live_face)
-            live_descriptor = np.array(face_rec_model.compute_face_descriptor(live_frame, live_shape))
+            live_shape = predictor(live_image, live_face)
+            live_descriptor = np.array(face_rec_model.compute_face_descriptor(live_image, live_shape))
 
             distances = [np.linalg.norm(ref_descriptor - live_descriptor) for ref_descriptor in ref_descriptors]
             min_distance = min(distances)
-            logging.debug(f"Distance calculée : {min_distance}")
-
-            if min_distance < 0.4:  # Ajuster le seuil selon les résultats de tests
+            if min_distance < 0.4:  # Adjust the threshold as needed
                 match_found = True
                 break
-        if match_found:
-            break
 
-    cap.release()
-    
-    if match_found:
-        return JsonResponse({'message': 'Match Found!'})
-    else:
-        return JsonResponse({'message': 'No Match'})
+        if match_found:
+            return JsonResponse({'message': 'Match Found!'})
+        else:
+            return JsonResponse({'message': 'No Match'})
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
