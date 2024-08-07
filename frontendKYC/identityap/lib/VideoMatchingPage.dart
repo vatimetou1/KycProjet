@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:identityap/camera.dart';
 import 'dart:convert';
+import 'camera.dart';
 
 class VideoMatchingPage extends StatefulWidget {
   @override
@@ -12,26 +14,43 @@ class _VideoMatchingPageState extends State<VideoMatchingPage> {
   String matchResult = 'No match yet';
   final TextEditingController nniController = TextEditingController();
 
-  void startMatching() async {
+  void startMatching(String imagePath) async {
+    if (!mounted) return;
+
     setState(() {
       isMatching = true;
       matchResult = 'Matching in progress...';
     });
 
-    String nni = nniController.text;
-    var url = 'http://192.168.56.1:8000/appecash/match-face/?nni=$nni';
-    var response = await http.get(Uri.parse(url));
+    try {
+      String nni = nniController.text;
+      var url = 'http://192.168.1.141:8000/appecash/match-face/?nni=$nni';
 
-    if (response.statusCode == 200) {
-      var data = json.decode(response.body);
+      var request = http.MultipartRequest('POST', Uri.parse(url));
+      request.files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+      var response = await request.send();
+      var responseBody = await response.stream.bytesToString();
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        var data = json.decode(responseBody);
+        setState(() {
+          matchResult = data[
+              'message']; // Assuming the backend sends a 'message' key with the result
+          isMatching = false;
+        });
+      } else {
+        setState(() {
+          matchResult = 'Failed to match face: $responseBody';
+          isMatching = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        matchResult = data[
-            'message']; // Assuming the backend sends a 'message' key with the result
-        isMatching = false;
-      });
-    } else {
-      setState(() {
-        matchResult = 'Failed to match face: ${response.body}';
+        matchResult = 'Failed to match face: $e';
         isMatching = false;
       });
     }
@@ -58,7 +77,18 @@ class _VideoMatchingPageState extends State<VideoMatchingPage> {
               ),
               SizedBox(height: 20),
               ElevatedButton(
-                onPressed: isMatching ? null : startMatching,
+                onPressed: isMatching
+                    ? null
+                    : () async {
+                        final capturedImage = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => CameraPage()),
+                        );
+
+                        if (capturedImage != null) {
+                          startMatching(capturedImage);
+                        }
+                      },
                 child: Text('Start Matching'),
               ),
               SizedBox(height: 20),

@@ -12,6 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Application de Carte d\'Identité',
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -39,7 +40,7 @@ class _InputPageState extends State<InputPage1> {
     });
 
     var url =
-        'http://192.168.56.1:8000/appecash/fetch-person-info/?nni=${_nniController.text}&numero_tel=${_phoneController.text}';
+        'http://192.168.1.141:8000/appecash/fetch-person-info/?nni=${_nniController.text}&numero_tel=${_phoneController.text}';
     var response = await http.get(Uri.parse(url));
 
     if (response.statusCode == 200) {
